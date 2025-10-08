@@ -83,6 +83,23 @@ public:
     }
   }
 
+  void clear()
+  {
+    write_mtx.lock();
+
+    try
+    {
+      log_vector.clear();
+      write_mtx.unlock();
+    }
+    catch (exception &ex)
+    {
+      cerr << "Caught exception: " << ex.what() << endl;
+      write_mtx.unlock();
+    }
+
+  }
+
   // Returns whether retrieving the last message went okay. If it went ok, the message is stored to the given message reference.
   bool read_last(string &message)
   {
@@ -149,22 +166,6 @@ public:
     }
   }
 
-  void clear()
-  {
-    write_mtx.lock();
-
-    try
-    {
-      log_vector.clear();
-      write_mtx.unlock();
-    }
-    catch (exception &ex)
-    {
-      cerr << "Caught exception: " << ex.what() << endl;
-      write_mtx.unlock();
-    }
-
-  }
 };
 
 class Buffer

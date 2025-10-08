@@ -25,6 +25,7 @@ private:
 
   mutex read_mtx;
   mutex write_mtx;
+  mutex turnstile; // To prevent writer starvation: idea from lecture 5.
   int reader_count = 0;
 
   // Internal helper (assumes mutex is already locked)
@@ -37,9 +38,26 @@ private:
     return true;
   }
 
+  // Trivial, but this groups the turnstile and write_mtx locks together into a single operation. 
+  // Note: First lock turnstile to prevent deadlocks as lock_read() also locks turnstile first.
+  void lock_write() {
+    turnstile.lock();
+    write_mtx.lock();
+  }
+
+  // Same idea as lock_write, but now for unlocking.
+  void unlock_write() {
+    write_mtx.unlock();
+    turnstile.unlock();
+  }
+
   // Used if a reader has started reading. In this time no one can write.
   void lock_read()
   {
+    // Wait for the writers in queue to finish writing.
+    turnstile.lock();
+    turnstile.unlock();
+
     read_mtx.lock();
     reader_count++;
     if (reader_count == 1)
@@ -65,41 +83,44 @@ private:
   }
 
 public:
+
+  // We first define the write operations (log() and clear()).
   void log(const string &message)
   {
-    write_mtx.lock();
+    lock_write();
 
     try
     {
       log_vector.push_back(message);
 
-      write_mtx.unlock();
+      unlock_write();
     }
     catch (exception &ex)
     {
       cerr << "Caught exception: " << ex.what() << endl;
 
-      write_mtx.unlock();
+      unlock_write();
     }
   }
 
   void clear()
   {
-    write_mtx.lock();
+    lock_write();
 
     try
     {
       log_vector.clear();
-      write_mtx.unlock();
+      unlock_write();
     }
     catch (exception &ex)
     {
       cerr << "Caught exception: " << ex.what() << endl;
-      write_mtx.unlock();
+      unlock_write();
     }
 
   }
 
+  // Now we define the read operations.
   // Returns whether retrieving the last message went okay. If it went ok, the message is stored to the given message reference.
   bool read_last(string &message)
   {

@@ -20,57 +20,74 @@ using namespace std;
 
 class Logger
 {
-  private:
-  vector<string> logs;
+private:
+  vector<string> log_vector;
   mutex log_mtx;
 
   // Internal helper (assumes mutex is already locked)
-  bool _read_at_nolock(const int index, std::string& message) {
-      if (index < 0 || index >= static_cast<int>(logs.size()))
-          return false;
+  bool _read_at_nolock(const int index, std::string &message)
+  {
+    if (index < 0 || index >= static_cast<int>(log_vector.size()))
+      return false;
 
-      message = logs.at(index);
-      return true;
+    message = log_vector.at(index);
+    return true;
   }
-  
-  public:
-  void log(const string& message) {
+
+public:
+  void log(const string &message)
+  {
     log_mtx.lock();
-    try {
-      logs.push_back(message);
+
+    try
+    {
+      log_vector.push_back(message);
+
       log_mtx.unlock();
-    } catch (exception& ex) {
+    }
+    catch (exception &ex)
+    {
       cerr << "Caught exception: " << ex.what() << endl;
+
       log_mtx.unlock();
     }
   }
 
   // Returns whether retrieving the last message went okay. If it went ok, the message is stored to the given message reference.
-  bool read_last(string& message) {
+  bool read_last(string &message)
+  {
     log_mtx.lock();
-    try {
-      const int last_index = logs.size() - 1;
+
+    try
+    {
+      const int last_index = log_vector.size() - 1;
       bool ret = _read_at_nolock(last_index, message);
-      log_mtx.unlock();
 
+      log_mtx.unlock();
       return ret;
-    } catch (exception& ex) {
+    }
+    catch (exception &ex)
+    {
       cerr << "Caught exception: " << ex.what() << endl;
-      log_mtx.unlock();
 
+      log_mtx.unlock();
       return false;
     }
-
   }
 
-  bool read_at(const int index, string& message) {
+  bool read_at(const int index, string &message)
+  {
     log_mtx.lock();
-    try {
+
+    try
+    {
       bool ret = _read_at_nolock(index, message);
       log_mtx.unlock();
 
       return ret;
-    } catch (exception& ex) {
+    }
+    catch (exception &ex)
+    {
       cerr << "Caught exception: " << ex.what() << endl;
       log_mtx.unlock();
 
@@ -78,7 +95,50 @@ class Logger
     }
   }
 
+  string read_all()
+  {
+    log_mtx.lock();
+
+    string ret = "";
+    try
+    {
+      for (string log : log_vector)
+      {
+        ret = ret + log + "\n";
+      }
+      log_mtx.unlock();
+    }
+    catch (const exception &e)
+    {
+      cerr << "Caught exception: " << e.what() << endl;
+      log_mtx.unlock();
+    }
+
+    return ret;
+  }
+
+  void clear()
+  {
+    // clear the logger
+    log_mtx.lock();
+    try
+    {
+      log_vector.erase(log_vector.begin(), log_vector.end());
+
+      log_mtx.unlock();
+    }
+    catch (const exception &e)
+    {
+      cerr << "Caught exception: " << e.what() << endl;
+
+      log_mtx.unlock();
+    }
+  }
 };
+
+class Buffer {
+  vector<int>
+}
 
 int main(int argc, char *argv[])
 {

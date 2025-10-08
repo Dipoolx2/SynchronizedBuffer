@@ -85,6 +85,7 @@ private:
 public:
 
   // We first define the write operations (log() and clear()).
+  // Appends a message to the log.
   void log(const string &message)
   {
     lock_write();
@@ -103,6 +104,7 @@ public:
     }
   }
 
+  // Clears the entire log.
   void clear()
   {
     lock_write();
@@ -122,7 +124,7 @@ public:
 
   // Now we define the read operations.
   // Returns whether retrieving the last message went okay. If it went ok, the message is stored to the given message reference.
-  bool read_last(string &message)
+  bool read_last(string &result)
   {
     lock_read();
     bool ret = false;
@@ -130,7 +132,7 @@ public:
     try
     {
       const int last_index = log_vector.size() - 1;
-      ret = read_at_nolock(last_index, message);
+      ret = read_at_nolock(last_index, result);
       unlock_read();
     }
     catch (exception &ex)
@@ -144,14 +146,15 @@ public:
     return ret;
   }
 
-  bool read_at(const int index, string &message)
+  // Returns whether retrieving the message at the given index went okay. If it went ok, the result is stored in the given result reference.
+  bool read_at(const int index, string &result)
   {
     lock_read();
     bool ret = false;
 
     try
     {
-      ret = read_at_nolock(index, message);
+      ret = read_at_nolock(index, result);
       unlock_read();
     }
     catch (exception &ex)

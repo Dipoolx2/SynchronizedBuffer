@@ -233,9 +233,24 @@ class Buffer
     log_message(action, true, "Buffer full.");
   }
 
-  // int read_front() {
-  //   string action 
-  // }
+  // Reads the front of the buffer. In case of success, it is written to 'dest'.
+  void read_front(int& dest) {
+    string action = "Buffer read";
+
+    if (buf.size() == 0) {
+      log_message(action, true, "Buffer empty.");
+      return;
+    }
+
+    try {
+      int val = buf[0];
+      buf.erase(buf.begin());
+      dest = val; // Replace after erasing succeeds.
+      log_message(action, false, "");
+    } catch (exception& ex) {
+      log_message(action, true, ex.what());
+    }
+  }
 };
 
 

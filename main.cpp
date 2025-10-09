@@ -11,6 +11,7 @@
 // function/class definitions you are going to use
 #include <algorithm>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -194,7 +195,101 @@ public:
 
 class Buffer
 {
+  private:
   vector<int> buf;
+  const shared_ptr<Logger> logger; // Use a smart pointer so we prevent memory leaks.
+
+  int bound = -1; // -1 = infinite
+  int sequence_number = 1;
+
+  // Logs message in format `<sequence_number> <action> <STATUS>: <message>`
+  // Updates sequence number accordingly.
+  void log_message(const string& action, const bool& fail, const string& error_message) {
+    string sequence_num_str = "[" + to_string( sequence_number++ ) + "]";
+    string status_str = fail ? "(FAIL)" : "(SUCCESS)";
+    string error_message_processed = fail ? " - " + error_message : "";
+
+    logger->log(sequence_num_str + " " + status_str + " " + action + error_message_processed);
+  }
+
+  public:
+  virtual ~Buffer() = default; // Default destructor makes sure that all ptr references (logger) are removed.
+  Buffer(shared_ptr<Logger> logger) : logger(logger) {}; 
+
+  void add_back(const int value) {
+    // For logging consistency
+    string action = "Buffer write " + to_string(value);
+    
+    // cout << buf.size() << " " << bound << endl;
+    if ((int) buf.size() < bound || bound == -1) {
+      try {
+        buf.push_back(value);
+        log_message(action, false, "");
+      } catch (exception& ex) {
+        log_message(action, true, ex.what());
+      }
+      return;
+    }
+    log_message(action, true, "Buffer full.");
+  }
+
+  // Removes the front of the buffer. In case of success, the value of the removed element is written to 'dest'.
+  void remove_front(int& dest) {
+    string action = "Buffer read";
+
+    if (buf.size() == 0) {
+      log_message(action, true, "Buffer empty.");
+      return;
+    }
+
+    try {
+      int val = buf[0];
+      buf.erase(buf.begin());
+      dest = val; // Replace after erasing succeeds.
+      log_message(action, false, "");
+    } catch (exception& ex) {
+      log_message(action, true, ex.what());
+    }
+  }
+
+  // Returns success status of the set bound operation.
+  bool set_bound(const int new_bound) {
+    // For logging consistency
+    string action = "Buffer set bound to " + to_string(bound);
+    
+    try {
+      // First try to resize the actual buffer before updating any values.
+      buf.resize(bound);
+
+      bound = new_bound;
+      log_message(action, false, "");
+
+      return true;
+    } catch (exception& ex) {
+      log_message(action, true, ex.what());
+
+      return false;
+    }
+
+  }
+
+    // Returns success status of the set infinite bound operation.
+  bool set_infinite_buffer() {
+    // For logging consistency
+    string action = "Buffer set infinite bound";
+    
+    try {
+      // No buffer resizing is necessary since vector will already do that.
+      bound = -1;
+      log_message(action, false, "");
+
+      return true;
+    } catch (exception& ex) {
+      log_message(action, true, ex.what());
+
+      return false;
+    }
+  }
 };
 
 
@@ -230,8 +325,27 @@ void log_test_1_sync() {
   else cout << "Failure to read log at index 4 (this should fail)." << endl;
 }
 
+void buff_log_test_1() {
+  shared_ptr<Logger> logger = std::make_shared<Logger>();
+  Buffer buffer = Buffer(logger);
+
+  buffer.add_back(1);
+  buffer.add_back(4);
+  buffer.add_back(6);
+
+  int removed;
+  buffer.remove_front(removed);
+
+  string result = "";
+  logger->read_all(result);
+
+  cout << "removed front: " << removed << endl;
+
+  cout << result << endl;
+}
+
 int main(int argc, char *argv[])
 {
-  log_test_1_sync();
+  buff_log_test_1();
   return 0;
 }

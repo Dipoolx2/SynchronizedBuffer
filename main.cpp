@@ -15,6 +15,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <sstream>
 
 // although it is good habit, you don't have to type '' before many objects by including this line
 using namespace std;
@@ -176,8 +177,12 @@ public:
 
     try
     {
-      for (string log : log_vector)
-        result = result + log + "\n";
+      ostringstream oss;
+      for (const string& log : log_vector) {
+        oss << log << "\n";
+      }
+
+      result = oss.str();
 
       unlock_read();
       return true;
@@ -303,7 +308,7 @@ public:
 
     if (new_bound < 0) {
       log_message(action, true, "Set negative bound attempted.");
-      
+
       buf_mtx.unlock();
       bound_mtx.unlock();
       return false;
@@ -312,7 +317,7 @@ public:
     try
     {
       // Warn in case vector entries are truncated.
-      bool truncated = new_bound < buf.size();
+      bool truncated = new_bound < (int) buf.size();
 
       // First try to resize the actual buffer before updating any values.
       buf.resize(new_bound); // Inefficient O(n), but the only implementation with a vector.
@@ -404,7 +409,7 @@ void log_test_1_sync()
 void buff_log_test_1()
 {
   shared_ptr<Logger> logger = std::make_shared<Logger>();
-  Buffer buffer = Buffer(logger);
+  Buffer buffer(logger);
 
   buffer.add_back(1);
   buffer.add_back(4);

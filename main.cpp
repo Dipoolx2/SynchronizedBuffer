@@ -201,15 +201,27 @@ private:
   int bound = -1; // -1 = infinite
   int sequence_number = 1;
 
+  mutex buf_mtx;
+  mutex bound_mtx;
+  mutex seq_num_mtx;
+
   // Logs message in format `<sequence_number> <action> <STATUS>: <message>`
   // Updates sequence number accordingly.
   void log_message(const string &action, const bool &fail, const string &error_message)
   {
-    string sequence_num_str = "[" + to_string(sequence_number++) + "]";
+    seq_num_mtx.lock();
+    int seq = sequence_number++;
+    seq_num_mtx.unlock();
+    string sequence_num_str = "[" + to_string(seq) + "]";
+
     string status_str = fail ? "(FAIL)" : "(SUCCESS)";
     string error_message_processed = fail ? " - " + error_message : "";
 
-    logger->log(sequence_num_str + " " + status_str + " " + action + error_message_processed);
+    try {
+      logger->log(sequence_num_str + " " + status_str + " " + action + error_message_processed);
+    } catch (exception& ex) {
+      cerr << "Error logging " << (fail ? "error " : "") << "message for " << action << ":\n" << ex.what();
+    }
   }
 
 public:
@@ -221,20 +233,33 @@ public:
     // For logging consistency
     string action = "Buffer write " + to_string(value);
 
-    // cout << buf.size() << " " << bound << endl;
-    if ((int)buf.size() < bound || bound == -1)
+    buf_mtx.lock();
+    bound_mtx.lock();
+
+    const bool valid_bounds = (int)buf.size() < bound || bound == -1;
+    
+    // Unlocking bound_mtx early is safe: The only way this could change anyway during current execution
+    // is if set_bound() or set_infinite_buffer() is called, but these need buf_mtx which the current function holds.
+    bound_mtx.unlock();
+
+    if (valid_bounds)
     {
       try
       {
         buf.push_back(value);
+
+        buf_mtx.unlock();
         log_message(action, false, "");
       }
       catch (exception &ex)
       {
+        buf_mtx.unlock();
         log_message(action, true, ex.what());
       }
       return;
     }
+
+    buf_mtx.unlock();
     log_message(action, true, "Buffer full.");
   }
 
@@ -243,8 +268,10 @@ public:
   {
     string action = "Buffer read";
 
+    buf_mtx.lock();
     if (buf.size() == 0)
     {
+      buf_mtx.unlock();
       log_message(action, true, "Buffer empty.");
       return;
     }
@@ -253,11 +280,14 @@ public:
     {
       int val = buf[0];
       buf.erase(buf.begin());
+
+      buf_mtx.unlock();
       dest = val; // Replace after erasing succeeds.
       log_message(action, false, "");
     }
     catch (exception &ex)
     {
+      buf_mtx.unlock();
       log_message(action, true, ex.what());
     }
   }
@@ -266,20 +296,39 @@ public:
   bool set_bound(const int new_bound)
   {
     // For logging consistency
-    string action = "Buffer set bound to " + to_string(bound);
+    string action = "Buffer set bound to " + to_string(new_bound);
+
+    buf_mtx.lock();
+    bound_mtx.lock();
+
+    if (new_bound < 0) {
+      log_message(action, true, "Set negative bound attempted.");
+      
+      buf_mtx.unlock();
+      bound_mtx.unlock();
+      return false;
+    }
 
     try
     {
-      // First try to resize the actual buffer before updating any values.
-      buf.resize(bound);
+      // Warn in case vector entries are truncated.
+      bool truncated = new_bound < buf.size();
 
+      // First try to resize the actual buffer before updating any values.
+      buf.resize(new_bound); // Inefficient O(n), but the only implementation with a vector.
       bound = new_bound;
-      log_message(action, false, "");
+
+      buf_mtx.unlock();
+      bound_mtx.unlock();
+
+      log_message(action, false, truncated ? "Warning: Entries were truncated." : "");
 
       return true;
     }
     catch (exception &ex)
     {
+      buf_mtx.unlock();
+      bound_mtx.unlock();
       log_message(action, true, ex.what());
 
       return false;
@@ -292,16 +341,22 @@ public:
     // For logging consistency
     string action = "Buffer set infinite bound";
 
+    // Note: This doesn't touch the vector itself, so the buf_mtx does not need to be locked.
+    bound_mtx.lock();
+    
     try
     {
       // No buffer resizing is necessary since vector will already do that.
       bound = -1;
+
+      bound_mtx.unlock();
       log_message(action, false, "");
 
       return true;
     }
     catch (exception &ex)
     {
+      bound_mtx.unlock();
       log_message(action, true, ex.what());
 
       return false;

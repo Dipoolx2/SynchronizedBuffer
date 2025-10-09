@@ -11,6 +11,7 @@
 // function/class definitions you are going to use
 #include <algorithm>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -194,7 +195,46 @@ public:
 
 class Buffer
 {
+  private:
   vector<int> buf;
+  const shared_ptr<Logger> logger; // Use a smart pointer so we prevent memory leaks.
+
+  int bound = -1; // -1 = infinite
+  int sequence_number = 1;
+
+  // Logs message in format `<sequence_number> <action> <STATUS>: <message>`
+  // Updates sequence number accordingly.
+  void log_message(const string& action, const bool& fail, const string& error_message) {
+    string sequence_num_str = "[" + to_string( sequence_number++ ) + "]";
+    string status_str = fail ? "(FAIL)" : "(SUCCESS)";
+    string error_message_processed = fail ? " - " + error_message : "";
+
+    logger->log(sequence_num_str + " " + action + " " + status_str + error_message_processed);
+  }
+
+  public:
+  virtual ~Buffer() = default; // Default destructor makes sure that all ptr references (logger) are removed.
+  Buffer(shared_ptr<Logger> logger) : logger(logger) {}; 
+
+  void add_back(int value) {
+    // For logging consistency
+    string action = "Buffer write to back";
+    
+    if (buf.size() > bound || bound == -1) {
+      try {
+        buf.push_back(value);
+        log_message(action, false, "");
+      } catch (exception& ex) {
+        log_message(action, true, ex.what());
+      }
+      return;
+    }
+    log_message(action, true, "Buffer full.");
+  }
+
+  // int read_front() {
+  //   string action 
+  // }
 };
 
 

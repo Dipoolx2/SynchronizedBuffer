@@ -39,15 +39,17 @@ private:
     return true;
   }
 
-  // Trivial, but this groups the turnstile and write_mtx locks together into a single operation. 
+  // Trivial, but this groups the turnstile and write_mtx locks together into a single operation.
   // Note: First lock turnstile to prevent deadlocks as lock_read() also locks turnstile first.
-  void lock_write() {
+  void lock_write()
+  {
     turnstile.lock();
     write_mtx.lock();
   }
 
   // Same idea as lock_write, but now for unlocking.
-  void unlock_write() {
+  void unlock_write()
+  {
     write_mtx.unlock();
     turnstile.unlock();
   }
@@ -84,7 +86,6 @@ private:
   }
 
 public:
-
   // We first define the write operations (log() and clear()).
   // Appends a message to the log.
   void log(const string &message)
@@ -120,7 +121,6 @@ public:
       cerr << "Caught exception: " << ex.what() << endl;
       unlock_write();
     }
-
   }
 
   // Now we define the read operations.
@@ -170,7 +170,7 @@ public:
   }
 
   // Returns success value
-  bool read_all(string& result)
+  bool read_all(string &result)
   {
     lock_read();
 
@@ -190,12 +190,11 @@ public:
       return false;
     }
   }
-
 };
 
 class Buffer
 {
-  private:
+private:
   vector<int> buf;
   const shared_ptr<Logger> logger; // Use a smart pointer so we prevent memory leaks.
 
@@ -204,28 +203,34 @@ class Buffer
 
   // Logs message in format `<sequence_number> <action> <STATUS>: <message>`
   // Updates sequence number accordingly.
-  void log_message(const string& action, const bool& fail, const string& error_message) {
-    string sequence_num_str = "[" + to_string( sequence_number++ ) + "]";
+  void log_message(const string &action, const bool &fail, const string &error_message)
+  {
+    string sequence_num_str = "[" + to_string(sequence_number++) + "]";
     string status_str = fail ? "(FAIL)" : "(SUCCESS)";
     string error_message_processed = fail ? " - " + error_message : "";
 
     logger->log(sequence_num_str + " " + status_str + " " + action + error_message_processed);
   }
 
-  public:
+public:
   virtual ~Buffer() = default; // Default destructor makes sure that all ptr references (logger) are removed.
-  Buffer(shared_ptr<Logger> logger) : logger(logger) {}; 
+  Buffer(shared_ptr<Logger> logger) : logger(logger) {};
 
-  void add_back(const int value) {
+  void add_back(const int value)
+  {
     // For logging consistency
     string action = "Buffer write " + to_string(value);
-    
+
     // cout << buf.size() << " " << bound << endl;
-    if ((int) buf.size() < bound || bound == -1) {
-      try {
+    if ((int)buf.size() < bound || bound == -1)
+    {
+      try
+      {
         buf.push_back(value);
         log_message(action, false, "");
-      } catch (exception& ex) {
+      }
+      catch (exception &ex)
+      {
         log_message(action, true, ex.what());
       }
       return;
@@ -234,30 +239,37 @@ class Buffer
   }
 
   // Removes the front of the buffer. In case of success, the value of the removed element is written to 'dest'.
-  void remove_front(int& dest) {
+  void remove_front(int &dest)
+  {
     string action = "Buffer read";
 
-    if (buf.size() == 0) {
+    if (buf.size() == 0)
+    {
       log_message(action, true, "Buffer empty.");
       return;
     }
 
-    try {
+    try
+    {
       int val = buf[0];
       buf.erase(buf.begin());
       dest = val; // Replace after erasing succeeds.
       log_message(action, false, "");
-    } catch (exception& ex) {
+    }
+    catch (exception &ex)
+    {
       log_message(action, true, ex.what());
     }
   }
 
   // Returns success status of the set bound operation.
-  bool set_bound(const int new_bound) {
+  bool set_bound(const int new_bound)
+  {
     // For logging consistency
     string action = "Buffer set bound to " + to_string(bound);
-    
-    try {
+
+    try
+    {
       // First try to resize the actual buffer before updating any values.
       buf.resize(bound);
 
@@ -265,26 +277,31 @@ class Buffer
       log_message(action, false, "");
 
       return true;
-    } catch (exception& ex) {
+    }
+    catch (exception &ex)
+    {
       log_message(action, true, ex.what());
 
       return false;
     }
-
   }
 
-    // Returns success status of the set infinite bound operation.
-  bool set_infinite_buffer() {
+  // Returns success status of the set infinite bound operation.
+  bool set_infinite_buffer()
+  {
     // For logging consistency
     string action = "Buffer set infinite bound";
-    
-    try {
+
+    try
+    {
       // No buffer resizing is necessary since vector will already do that.
       bound = -1;
       log_message(action, false, "");
 
       return true;
-    } catch (exception& ex) {
+    }
+    catch (exception &ex)
+    {
       log_message(action, true, ex.what());
 
       return false;
@@ -292,8 +309,8 @@ class Buffer
   }
 };
 
-
-void log_test_1_sync() {
+void log_test_1_sync()
+{
   Logger logger;
   logger.log("[1] Hello world!");
   logger.log("[2] How are you doing?");
@@ -304,28 +321,33 @@ void log_test_1_sync() {
   bool success1 = logger.read_at(1, first);
   if (success1)
     cout << first << endl;
-  else cout << "Failure to read log at index 1" << endl;
+  else
+    cout << "Failure to read log at index 1" << endl;
 
   string last;
   bool success2 = logger.read_last(last);
   if (success2)
     cout << last << endl;
-  else cout << "Failure to read log at last index" << endl;
+  else
+    cout << "Failure to read log at last index" << endl;
 
   string all;
   bool success3 = logger.read_all(all);
   if (success3)
     cout << all << endl;
-  else cout << "Failure to read all logs" << endl;
+  else
+    cout << "Failure to read all logs" << endl;
 
   string fail;
   bool success4 = logger.read_at(4, fail);
   if (success4)
     cout << fail << endl;
-  else cout << "Failure to read log at index 4 (this should fail)." << endl;
+  else
+    cout << "Failure to read log at index 4 (this should fail)." << endl;
 }
 
-void buff_log_test_1() {
+void buff_log_test_1()
+{
   shared_ptr<Logger> logger = std::make_shared<Logger>();
   Buffer buffer = Buffer(logger);
 

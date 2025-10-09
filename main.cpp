@@ -199,7 +199,7 @@ class Buffer
   vector<int> buf;
   const shared_ptr<Logger> logger; // Use a smart pointer so we prevent memory leaks.
 
-  int bound = -1; // -1 = infinite
+  int bound = 2; // -1 = infinite
   int sequence_number = 1;
 
   // Logs message in format `<sequence_number> <action> <STATUS>: <message>`
@@ -209,7 +209,7 @@ class Buffer
     string status_str = fail ? "(FAIL)" : "(SUCCESS)";
     string error_message_processed = fail ? " - " + error_message : "";
 
-    logger->log(sequence_num_str + " " + action + " " + status_str + error_message_processed);
+    logger->log(sequence_num_str + " " + status_str + " " + action + error_message_processed);
   }
 
   public:
@@ -218,9 +218,10 @@ class Buffer
 
   void add_back(int value) {
     // For logging consistency
-    string action = "Buffer write to back";
+    string action = "Buffer write " + to_string(value);
     
-    if (buf.size() > bound || bound == -1) {
+    // cout << buf.size() << " " << bound << endl;
+    if ((int) buf.size() < bound || bound == -1) {
       try {
         buf.push_back(value);
         log_message(action, false, "");
@@ -270,8 +271,22 @@ void log_test_1_sync() {
   else cout << "Failure to read log at index 4 (this should fail)." << endl;
 }
 
+void buff_log_test_1() {
+  shared_ptr<Logger> logger = std::make_shared<Logger>();
+  Buffer buffer = Buffer(logger);
+
+  buffer.add_back(1);
+  buffer.add_back(4);
+  buffer.add_back(6);
+
+  string result = "";
+  logger->read_all(result);
+
+  cout << result << endl;
+}
+
 int main(int argc, char *argv[])
 {
-  log_test_1_sync();
+  buff_log_test_1();
   return 0;
 }

@@ -199,7 +199,7 @@ class Buffer
   vector<int> buf;
   const shared_ptr<Logger> logger; // Use a smart pointer so we prevent memory leaks.
 
-  int bound = 2; // -1 = infinite
+  int bound = -1; // -1 = infinite
   int sequence_number = 1;
 
   // Logs message in format `<sequence_number> <action> <STATUS>: <message>`
@@ -216,7 +216,7 @@ class Buffer
   virtual ~Buffer() = default; // Default destructor makes sure that all ptr references (logger) are removed.
   Buffer(shared_ptr<Logger> logger) : logger(logger) {}; 
 
-  void add_back(int value) {
+  void add_back(const int value) {
     // For logging consistency
     string action = "Buffer write " + to_string(value);
     
@@ -233,8 +233,8 @@ class Buffer
     log_message(action, true, "Buffer full.");
   }
 
-  // Reads the front of the buffer. In case of success, it is written to 'dest'.
-  void read_front(int& dest) {
+  // Removes the front of the buffer. In case of success, the value of the removed element is written to 'dest'.
+  void remove_front(int& dest) {
     string action = "Buffer read";
 
     if (buf.size() == 0) {
@@ -249,6 +249,45 @@ class Buffer
       log_message(action, false, "");
     } catch (exception& ex) {
       log_message(action, true, ex.what());
+    }
+  }
+
+  // Returns success status of the set bound operation.
+  bool set_bound(const int new_bound) {
+    // For logging consistency
+    string action = "Buffer set bound to " + to_string(bound);
+    
+    try {
+      // First try to resize the actual buffer before updating any values.
+      buf.resize(bound);
+
+      bound = new_bound;
+      log_message(action, false, "");
+
+      return true;
+    } catch (exception& ex) {
+      log_message(action, true, ex.what());
+
+      return false;
+    }
+
+  }
+
+    // Returns success status of the set infinite bound operation.
+  bool set_infinite_buffer() {
+    // For logging consistency
+    string action = "Buffer set infinite bound";
+    
+    try {
+      // No buffer resizing is necessary since vector will already do that.
+      bound = -1;
+      log_message(action, false, "");
+
+      return true;
+    } catch (exception& ex) {
+      log_message(action, true, ex.what());
+
+      return false;
     }
   }
 };
@@ -294,8 +333,13 @@ void buff_log_test_1() {
   buffer.add_back(4);
   buffer.add_back(6);
 
+  int removed;
+  buffer.remove_front(removed);
+
   string result = "";
   logger->read_all(result);
+
+  cout << "removed front: " << removed << endl;
 
   cout << result << endl;
 }

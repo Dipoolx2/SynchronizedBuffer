@@ -274,7 +274,7 @@ public:
   // Removes the front of the buffer. In case of success, the value of the removed element is written to 'dest'.
   void remove_front(int &dest)
   {
-    string action = "Buffer read";
+    string action = "Buffer remove front";
 
     buf_mtx.lock();
     if (buf.size() == 0)
@@ -424,13 +424,41 @@ void buff_log_test_1()
   string result = "";
   logger->read_all(result);
 
+  cout << "=== Buffer Log Test 1 ===" << endl;
+
   cout << "removed front: " << removed << endl;
 
+  cout << result << endl;
+}
+
+void buff_log_test_2()
+{
+  auto logger = make_shared<Logger>();
+  Buffer bufferA(logger, "b1");
+  Buffer bufferB(logger, "b2");
+
+  bufferA.add_back(10);
+  bufferB.add_back(20);
+  bufferA.add_back(30);
+  bufferB.add_back(40);
+
+  int outA, outB;
+  bufferA.remove_front(outA);
+  bufferB.remove_front(outB);
+
+  string result;
+  logger->read_all(result);
+
+  cout << "=== Buffer Log Test 2 ===" << endl;
+  cout << "BufferA removed: " << outA << endl;
+  cout << "BufferB removed: " << outB << endl;
+  cout << "Logger content:" << endl;
   cout << result << endl;
 }
 
 int main(int argc, char *argv[])
 {
   buff_log_test_1();
+  buff_log_test_2();
   return 0;
 }

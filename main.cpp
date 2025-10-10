@@ -232,6 +232,17 @@ private:
     }
   }
 
+  // Group buf and bound mutexes lock operations together. Ensures it always happens in the same order.
+  void lock_buffer() {
+    buf_mtx.lock();
+    bound_mtx.lock();
+  }
+
+  void unlock_buffer() {
+    buf_mtx.unlock();
+    bound_mtx.unlock();
+  }
+
 public:
   virtual ~Buffer() = default; // Default destructor makes sure that all ptr references (logger) are removed.
   Buffer(shared_ptr<Logger> logger, const string buffer_name) : logger(logger), buffer_name(buffer_name) {};
@@ -241,16 +252,9 @@ public:
     // For logging consistency
     string action = "Buffer write " + to_string(value);
 
-    buf_mtx.lock();
-    bound_mtx.lock();
-
-    const bool valid_bounds = (int)buf.size() < bound || bound == -1;
+    lock_buffer();
     
-    // Unlocking bound_mtx early is safe: The only way this could change anyway during current execution
-    // is if set_bound() or set_infinite_buffer() is called, but these need buf_mtx which the current function holds.
-    bound_mtx.unlock();
-
-    if (valid_bounds)
+    if ((int)buf.size() < bound || bound == -1)
     {
       try
       {
@@ -260,30 +264,35 @@ public:
         //(because otherwise this operation is very fast and it might not look like its concurrent with threads)
         //this_thread::sleep_for(chrono::milliseconds(50));
 
-        buf_mtx.unlock();
+        unlock_buffer();
+
         log_message(action, false, "");
       }
       catch (exception &ex)
       {
-        buf_mtx.unlock();
+        unlock_buffer();
+
         log_message(action, true, ex.what());
       }
       return;
     }
 
-    buf_mtx.unlock();
+    unlock_buffer();
+
     log_message(action, true, "Buffer full.");
   }
 
   // Removes the front of the buffer. In case of success, the value of the removed element is written to 'dest'.
+  // The bound should be locked too, since otherwise you could have a race condition where the front is removed first but
+  // the bound is shrunk concurrently, the program still reads the wrong prior buffer size and wrongfully gives an error.
   void remove_front(int &dest)
   {
     string action = "Buffer remove front";
+    lock_buffer();
 
-    buf_mtx.lock();
     if (buf.size() == 0)
     {
-      buf_mtx.unlock();
+      unlock_buffer();
       log_message(action, true, "Buffer empty.");
       return;
     }
@@ -293,13 +302,15 @@ public:
       int val = buf[0];
       buf.erase(buf.begin());
 
-      buf_mtx.unlock();
+      unlock_buffer();
+
       dest = val; // Replace after erasing succeeds.
       log_message(action, false, "");
     }
     catch (exception &ex)
     {
-      buf_mtx.unlock();
+      unlock_buffer();
+
       log_message(action, true, ex.what());
     }
   }
@@ -310,14 +321,12 @@ public:
     // For logging consistency
     string action = "Buffer set bound to " + to_string(new_bound);
 
-    buf_mtx.lock();
-    bound_mtx.lock();
+    lock_buffer();
 
     if (new_bound < 0) {
       log_message(action, true, "Set negative bound attempted.");
 
-      buf_mtx.unlock();
-      bound_mtx.unlock();
+      unlock_buffer();
       return false;
     }
 
@@ -331,47 +340,44 @@ public:
         buf.resize(new_bound); // Inefficient O(n), but the only implementation with a vector.
       bound = new_bound;
 
-      buf_mtx.unlock();
-      bound_mtx.unlock();
+      unlock_buffer();
 
       log_message(action, false, truncated ? "Warning: Entries were truncated." : "");
-
       return true;
     }
     catch (exception &ex)
     {
-      buf_mtx.unlock();
-      bound_mtx.unlock();
-      log_message(action, true, ex.what());
+      unlock_buffer();
 
+      log_message(action, true, ex.what());
       return false;
     }
   }
 
   // Returns success status of the set infinite bound operation.
+  // The whole buffer should be protected to avoid race conditions with concurrent push_backs.
   bool set_infinite_buffer()
   {
     // For logging consistency
     string action = "Buffer set infinite bound";
 
-    // Note: This doesn't touch the vector itself, so the buf_mtx does not need to be locked.
-    bound_mtx.lock();
+    lock_buffer();
     
     try
     {
       // No buffer resizing is necessary since vector will already do that.
       bound = -1;
 
-      bound_mtx.unlock();
+      unlock_buffer();
+      
       log_message(action, false, "");
-
       return true;
     }
     catch (exception &ex)
     {
-      bound_mtx.unlock();
-      log_message(action, true, ex.what());
+      unlock_buffer();
 
+      log_message(action, true, ex.what());
       return false;
     }
   }

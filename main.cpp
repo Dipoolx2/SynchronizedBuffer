@@ -203,6 +203,8 @@ private:
   vector<int> buf;
   const shared_ptr<Logger> logger; // Use a smart pointer so we prevent memory leaks.
 
+  const string buffer_name;
+
   int bound = -1; // -1 = infinite
   int sequence_number = 1;
 
@@ -221,9 +223,10 @@ private:
 
     string status_str = fail ? "(FAIL)" : "(SUCCESS)";
     string error_message_processed = fail ? " - " + error_message : "";
+    string buffer_prefix = buffer_name.empty() ? "" : buffer_name + ": ";
 
     try {
-      logger->log(sequence_num_str + " " + status_str + " " + action + error_message_processed);
+      logger->log(buffer_prefix + sequence_num_str + " " + status_str + " " + action + error_message_processed);
     } catch (exception& ex) {
       cerr << "Error logging " << (fail ? "error " : "") << "message for " << action << ":\n" << ex.what();
     }
@@ -231,7 +234,7 @@ private:
 
 public:
   virtual ~Buffer() = default; // Default destructor makes sure that all ptr references (logger) are removed.
-  Buffer(shared_ptr<Logger> logger) : logger(logger) {};
+  Buffer(shared_ptr<Logger> logger, const string buffer_name) : logger(logger), buffer_name(buffer_name) {};
 
   void add_back(const int value)
   {
@@ -409,7 +412,7 @@ void log_test_1_sync()
 void buff_log_test_1()
 {
   shared_ptr<Logger> logger = std::make_shared<Logger>();
-  Buffer buffer(logger);
+  Buffer buffer(logger, "b1");
 
   buffer.add_back(1);
   buffer.add_back(4);

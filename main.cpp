@@ -255,6 +255,10 @@ public:
       try
       {
         buf.push_back(value);
+        
+        // NOTE: uncomment this if you want to test actual concurrency 
+        //(because otherwise this operation is very fast and it might not look like its concurrent with threads)
+        //this_thread::sleep_for(chrono::milliseconds(50));
 
         buf_mtx.unlock();
         log_message(action, false, "");
@@ -323,7 +327,8 @@ public:
       bool truncated = new_bound < (int) buf.size();
 
       // First try to resize the actual buffer before updating any values.
-      buf.resize(new_bound); // Inefficient O(n), but the only implementation with a vector.
+      if (new_bound < bound)
+        buf.resize(new_bound); // Inefficient O(n), but the only implementation with a vector.
       bound = new_bound;
 
       buf_mtx.unlock();
@@ -456,9 +461,96 @@ void buff_log_test_2()
   cout << result << endl;
 }
 
+void buff_log_test_3()
+{
+  auto logger = make_shared<Logger>();
+  Buffer buffer(logger, "b1");
+
+  auto writer = [&](int id) {
+
+    for (int i = 0; i < 5; ++i)
+      buffer.add_back(id * 10 + i);
+  };
+
+  thread t1(writer, 1);
+  thread t2(writer, 2);
+  thread t3(writer, 3);
+
+  t1.join();
+  t2.join();
+  t3.join();
+
+  string result;
+  logger->read_all(result);
+
+  cout << "=== Buffer Log Test 3 (Concurrent writes) ===" << endl;
+  cout << result << endl;
+}
+
+void buff_log_test_4()
+{
+  auto logger = make_shared<Logger>();
+  Buffer buffer(logger, "b1");
+
+  buffer.set_bound(3);
+  buffer.add_back(1);
+  buffer.add_back(2);
+  buffer.add_back(3);
+  buffer.add_back(4); // should fail: buffer full
+
+  buffer.remove_front(*(new int)); // consume one
+
+  buffer.add_back(5); // now allowed
+
+  string result;
+  logger->read_all(result);
+
+  cout << "=== Buffer Log Test 4 (Bound handling) ===" << endl;
+  cout << result << endl;
+}
+
+void logger_concurrency_test()
+{
+  Logger logger;
+
+  auto writer = [&]() {
+    for (int i = 0; i < 10; ++i)
+      logger.log("Writer log " + to_string(i));
+  };
+
+  auto reader = [&]() {
+    for (int i = 0; i < 5; ++i)
+    {
+      string result;
+      logger.read_all(result);
+    }
+  };
+
+  thread t1(writer);
+  thread t2(writer);
+  thread t3(reader);
+  thread t4(reader);
+
+  t1.join();
+  t2.join();
+  t3.join();
+  t4.join();
+
+  string final_log;
+  logger.read_all(final_log);
+
+  cout << "=== Logger Concurrency Test ===" << endl;
+  cout << final_log << endl;
+}
+
 int main(int argc, char *argv[])
 {
   buff_log_test_1();
   buff_log_test_2();
+  buff_log_test_3();
+  buff_log_test_4();
+
+  logger_concurrency_test();
+  
   return 0;
 }

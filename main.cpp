@@ -200,8 +200,6 @@ public:
 class Buffer
 {
 private:
-  virtual ~Buffer() = default; // Default destructor makes sure that all ptr references (logger) are removed.
-
   vector<int> buf;
   const shared_ptr<Logger> logger; // Use a smart pointer so we prevent memory leaks.
 
@@ -235,6 +233,7 @@ private:
   }
 
 public:
+  virtual ~Buffer() = default; // Default destructor makes sure that all ptr references (logger) are removed.
   Buffer(shared_ptr<Logger> logger, const string buffer_name) : logger(logger), buffer_name(buffer_name) {};
 
   void add_back(const int value)

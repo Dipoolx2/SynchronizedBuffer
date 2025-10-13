@@ -15,6 +15,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <atomic>
 #include <sstream>
 
 // although it is good habit, you don't have to type '' before many objects by including this line
@@ -178,7 +179,8 @@ public:
     try
     {
       ostringstream oss;
-      for (const string& log : log_vector) {
+      for (const string &log : log_vector)
+      {
         oss << log << "\n";
       }
 
@@ -225,20 +227,26 @@ private:
     string error_message_processed = fail ? " - " + error_message : "";
     string buffer_prefix = buffer_name.empty() ? "" : buffer_name + ": ";
 
-    try {
+    try
+    {
       logger->log(buffer_prefix + sequence_num_str + " " + status_str + " " + action + error_message_processed);
-    } catch (exception& ex) {
-      cerr << "Error logging " << (fail ? "error " : "") << "message for " << action << ":\n" << ex.what();
+    }
+    catch (exception &ex)
+    {
+      cerr << "Error logging " << (fail ? "error " : "") << "message for " << action << ":\n"
+           << ex.what();
     }
   }
 
   // Group buf and bound mutexes lock operations together. Ensures it always happens in the same order.
-  void lock_buffer() {
+  void lock_buffer()
+  {
     buf_mtx.lock();
     bound_mtx.lock();
   }
 
-  void unlock_buffer() {
+  void unlock_buffer()
+  {
     buf_mtx.unlock();
     bound_mtx.unlock();
   }
@@ -253,16 +261,16 @@ public:
     string action = "Buffer write " + to_string(value);
 
     lock_buffer();
-    
+
     if ((int)buf.size() < bound || bound == -1)
     {
       try
       {
         buf.push_back(value);
-        
-        // NOTE: uncomment this if you want to test actual concurrency 
+
+        // NOTE: uncomment this if you want to test actual concurrency
         //(because otherwise this operation is very fast and it might not look like its concurrent with threads)
-        //this_thread::sleep_for(chrono::milliseconds(50));
+        // this_thread::sleep_for(chrono::milliseconds(50));
 
         unlock_buffer();
 
@@ -323,7 +331,8 @@ public:
 
     lock_buffer();
 
-    if (new_bound < 0) {
+    if (new_bound < 0)
+    {
       log_message(action, true, "Set negative bound attempted.");
 
       unlock_buffer();
@@ -333,7 +342,7 @@ public:
     try
     {
       // Warn in case vector entries are truncated.
-      bool truncated = new_bound < (int) buf.size();
+      bool truncated = new_bound < (int)buf.size();
 
       // First try to resize the actual buffer before updating any values.
       if (new_bound < bound)
@@ -362,14 +371,14 @@ public:
     string action = "Buffer set infinite bound";
 
     lock_buffer();
-    
+
     try
     {
       // No buffer resizing is necessary since vector will already do that.
       bound = -1;
 
       unlock_buffer();
-      
+
       log_message(action, false, "");
       return true;
     }
@@ -472,8 +481,8 @@ void buff_log_test_3()
   auto logger = make_shared<Logger>();
   Buffer buffer(logger, "b1");
 
-  auto writer = [&](int id) {
-
+  auto writer = [&](int id)
+  {
     for (int i = 0; i < 5; ++i)
       buffer.add_back(id * 10 + i);
   };
@@ -519,12 +528,14 @@ void logger_concurrency_test()
 {
   Logger logger;
 
-  auto writer = [&]() {
+  auto writer = [&]()
+  {
     for (int i = 0; i < 10; ++i)
       logger.log("Writer log " + to_string(i));
   };
 
-  auto reader = [&]() {
+  auto reader = [&]()
+  {
     for (int i = 0; i < 5; ++i)
     {
       string result;
@@ -549,6 +560,156 @@ void logger_concurrency_test()
   cout << final_log << endl;
 }
 
+void buffer_concurrency_test()
+{
+  auto logger = make_shared<Logger>();
+  Buffer buffer(logger, "b1");
+  auto writer = [&](int id)
+  {
+    for (int i = 0; i < 5; i++)
+    {
+      buffer.add_back(id * 10 + i);
+      this_thread::sleep_for(chrono::milliseconds(20));
+    }
+  };
+
+  auto remover = [&]()
+  {
+    string reads;
+    for (int i = 0; i < 5; i++)
+    {
+      int var;
+      buffer.remove_front(var);
+      this_thread::sleep_for(chrono::milliseconds(20));
+    }
+  };
+
+  thread t1(writer, 1);
+  thread t2(writer, 2);
+  thread t3(remover);
+  thread t4(remover);
+  thread t5(writer, 3);
+
+  t1.join();
+  t2.join();
+  t3.join();
+  t4.join();
+  t5.join();
+
+  string result;
+  logger->read_all(result);
+
+  cout << "=== Buffer concurrency Test ===" << endl;
+  cout << result << endl;
+}
+
+void buffer_empty_out_test()
+{
+  auto logger = make_shared<Logger>();
+  Buffer buffer(logger, "b1");
+
+  auto writer = [&](int id)
+  {
+    for (int i = 0; i < 15; i++)
+    {
+      buffer.add_back(id * 100 + i);
+      this_thread::sleep_for(chrono::milliseconds(2));
+    }
+  };
+
+  auto remover = [&]()
+  {
+    string reads;
+    for (int i = 0; i < 5; i++)
+    {
+      int var;
+      buffer.remove_front(var);
+      this_thread::sleep_for(chrono::milliseconds(3));
+    }
+  };
+
+  thread t1(writer, 1);
+  thread t2(remover);
+  thread t3(writer, 2);
+  thread t4(remover);
+  thread t5(remover);
+
+  t1.join();
+  t2.join();
+  t3.join();
+  t4.join();
+  t5.join();
+
+  string result;
+  logger->read_all(result);
+
+  cout << "=== Buffer Empty Test ===" << endl;
+  cout << result << endl;
+}
+
+void logger_r_w_fairness_test()
+{
+  shared_ptr<Logger> logger = make_shared<Logger>();
+
+  const int n_readers = 20;
+  const int n_writers = 5;
+  const int read_iter = 200; // Num of reads per reader
+  const int write_iter = 50; // Num of writes per writer
+
+  // use atomic for this: It is the easiest way to count with threads
+  // and I don't want to write unit tests FOR the unit tests.
+  atomic<int> reads_done{0};
+  atomic<int> writes_done{0};
+
+  // Writer threads
+  vector<thread> writers;
+  for (int i = 0; i < n_writers; i++)
+  {
+    writers.emplace_back([&, i]()
+                         {
+            for (int j = 0; j < write_iter; j++) {
+                string msg = "Writer " + to_string(i) + " message " + to_string(j);
+                logger->log(msg);
+                writes_done++;
+
+                // Slight delay to get more overlap (= better testing)
+                this_thread::sleep_for(chrono::milliseconds(10));
+            } });
+  }
+
+  // Reader threads
+  vector<thread> readers;
+  for (int i = 0; i < n_readers; i++)
+  {
+    readers.emplace_back([&, i]()
+                         {
+            string result; // Not used, but just to mimic reading
+            for (int j = 0; j < read_iter; j++) {
+                if (logger->read_last(result)) {
+                    reads_done++;
+                }
+                // Slight delay to get more overlap (= better testing)
+                this_thread::sleep_for(chrono::milliseconds(3));
+            } });
+  }
+
+  // Wait for all threads
+  for (auto &t : readers)
+    t.join();
+  for (auto &t : writers)
+    t.join();
+
+  // Show results
+  cout << "=== Turnstile Fairness Test ===" << endl;
+  cout << "Total reads performed: " << reads_done << "\n";
+  cout << "Total writes performed: " << writes_done << "\n";
+
+  // Check final log content
+  string all_logs;
+  logger->read_all(all_logs);
+  cout << "Final log size: " << count(all_logs.begin(), all_logs.end(), '\n') << " entries\n\n";
+}
+
 int main(int argc, char *argv[])
 {
   buff_log_test_1();
@@ -557,6 +718,9 @@ int main(int argc, char *argv[])
   buff_log_test_4();
 
   logger_concurrency_test();
-  
+  buffer_concurrency_test();
+  buffer_empty_out_test();
+  logger_r_w_fairness_test();
+
   return 0;
 }
